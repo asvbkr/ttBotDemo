@@ -25,6 +25,7 @@ def index(request):
     if request.method == "POST":
         request_body = request.body
     if request_body:
+        tt_bot.lgz.debug('request_body: %s' % request_body)
         tt_bot.handle_request_body(request_body)
     data = {'title': title, 'info': '%s' % request.method}
     return render(request, "index.html", context=data)
