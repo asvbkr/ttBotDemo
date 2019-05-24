@@ -1,0 +1,6 @@
+certifi
+urllib3
+six
+django
+gunicorn
+django-heroku
