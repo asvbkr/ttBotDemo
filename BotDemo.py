@@ -1,5 +1,6 @@
 # -*- coding: UTF-8 -*-
 import logging
+import os
 
 from TamTamBot.TamTamBot import TamTamBot
 
@@ -13,8 +14,8 @@ class BotDemo(TamTamBot):
     @property
     def token(self):
         # type: () -> str
-        # noinspection SpellCheckingInspection
-        return 'VCur56yHIOgz7O5otyduM_rHHlQ3k9SYE0uc6_mRadM'
+        token = os.environ.get('TT_BOT_DEMO_API_TOKEN')
+        return token
 
 
 if __name__ == '__main__':
