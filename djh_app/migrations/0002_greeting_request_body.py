@@ -13,7 +13,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='greeting',
             name='request_body',
-            field=models.TextField(default=None, verbose_name='request body'),
+            field=models.TextField(default='', verbose_name='request body'),
             preserve_default=False,
         ),
     ]
