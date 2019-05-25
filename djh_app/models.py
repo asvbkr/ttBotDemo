@@ -7,4 +7,4 @@ class Greeting(models.Model):
 
     who_max_len = 200
     who = models.TextField('who created', max_length=who_max_len)
-    request_body = models.TextField('request body')
+    request_body = models.TextField('request body', null=True)
