@@ -25,7 +25,11 @@ def index(request):
     if request.method == "POST":
         request_body = request.body
     if request_body:
-        tt_bot.lgz.debug('request_body: %s' % request_body)
+        greeting = Greeting()
+        greeting.who = ('%s: %s' % (request.method, request.headers.get('User-Agent')))[:Greeting.who_max_len]
+        greeting.request_body = request_body
+        greeting.save()
+
         tt_bot.handle_request_body(request_body)
     data = {'title': title, 'info': '%s' % request.method}
     return render(request, "index.html", context=data)
