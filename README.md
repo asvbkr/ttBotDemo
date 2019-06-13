@@ -1,5 +1,6 @@
 # ttBotDemo. Python 2 and 3 compatibility
 Демонстрационный бот для ТамТам на основе https://github.com/asvbkr/TamTamBot
+Рабочий инстанс - https://tt.me/asvbkrTestBot1
 ***
 ## Инструкция:
 <ol>
