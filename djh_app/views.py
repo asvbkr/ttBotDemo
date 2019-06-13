@@ -30,6 +30,7 @@ def index(request):
         greeting.request_body = request_body.decode('utf-8')
         greeting.save()
         tt_bot.handle_request_body(request_body)
+        return HttpResponse('')
 
     data = {'title': title, 'info': '%s' % request.method}
     return render(request, "index.html", context=data)
