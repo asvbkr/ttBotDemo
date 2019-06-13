@@ -6,10 +6,6 @@ from TamTamBot.TamTamBot import TamTamBot
 
 
 class BotDemo(TamTamBot):
-    def __init__(self):
-        super(BotDemo, self).__init__()
-        self.debug = True
-        self.logging_level = logging.DEBUG if self.debug else logging.INFO
 
     @property
     def token(self):
