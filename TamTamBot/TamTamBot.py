@@ -1,6 +1,8 @@
 # -*- coding: UTF-8 -*-
 import json
 import logging
+import os
+import sqlite3
 import sys
 from django.utils.translation import gettext as _
 from time import sleep
@@ -21,10 +23,10 @@ class TamTamBotException(Exception):
 
 
 class TamTamBot(object):
+
     def __init__(self):
         # Общие настройки - логирование, кодировка и т.п.
-        self._debug = None
-        self._logging_level = None
+
         # noinspection SpellCheckingInspection
         formatter = logging.Formatter('%(asctime)s - %(name)s[%(threadName)s-%(thread)d] - %(levelname)s - %(module)s.%(funcName)s:%(lineno)d - %(message)s')
         self.lgz = logging.getLogger('%s' % self.__class__.__name__)
@@ -43,6 +45,16 @@ class TamTamBot(object):
         self.conf = Configuration()
         self.conf.api_key['access_token'] = self.token
 
+        self.trace_requests = True if os.environ.get('TRACE_REQUESTS', 'False').lower() == 'true' else False
+
+        logging_level = os.environ.get('LOGGING_LEVEL', 'INFO')
+        # noinspection PyProtectedMember
+        logging_level = logging._nameToLevel.get(logging_level)
+        if logging_level is None:
+            self.logging_level = logging.DEBUG if self.trace_requests else logging.INFO
+        else:
+            self.logging_level = logging_level
+
         self.polling_sleep_time = 5
 
         self.client = ApiClient(self.conf)
@@ -53,7 +65,12 @@ class TamTamBot(object):
         self.chats = ChatsApi(self.client)
         self.upload = UploadApi(self.client)
 
-        self.info = self.api.get_my_info()
+        self.info = None
+        try:
+            self.info = self.api.get_my_info()
+        except ApiException:
+            self.lgz.exception('ApiException')
+            pass
         if isinstance(self.info, UserWithPhoto):
             self.user_id = self.info.user_id
             self.name = self.info.name
@@ -77,20 +94,17 @@ class TamTamBot(object):
         ]
         self.stop_polling = False
 
-        self.prev_step = {}
-
-        self.debug = False
-        self.logging_level = logging.DEBUG if self.debug else logging.INFO
+        self.prev_step_table_name = 'tamtambot_prev_step'
+        self.db_prepare()
 
     @property
-    def debug(self):
+    def trace_requests(self):
         # type: () -> bool
-        return self._debug
+        return self.conf.debug
 
-    @debug.setter
-    def debug(self, val):
-        self._debug = val
-        self.conf.debug = self._debug
+    @trace_requests.setter
+    def trace_requests(self, val):
+        self.conf.debug = val
 
     @property
     def logging_level(self):
@@ -116,6 +130,20 @@ class TamTamBot(object):
             # noinspection PyUnresolvedReferences
             sys.setdefaultencoding(encoding)
             self.lgz.info('The default encoding is set to %s' % sys.getdefaultencoding())
+
+    @property
+    def conn_srv(self):
+        return sqlite3.connect(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'ttb.sqlite3'))
+
+    def db_prepare(self):
+        # Создание таблицы
+        sql_s = '''
+            CREATE TABLE IF NOT EXISTS %s (
+                [index]  CHAR (64) PRIMARY KEY,
+                [update] TEXT      NOT NULL
+            )        
+        ''' % self.prev_step_table_name
+        self.conn_srv.cursor().execute(sql_s)
 
     @staticmethod
     def add_buttons_to_message_body(message_body, buttons):
@@ -155,12 +183,17 @@ class TamTamBot(object):
             return getattr(self, cmd_handler)
 
     def call_cmd_handler(self, update):
+        # type: (UpdateCmn or Update) -> (bool, bool)
         handler_exists = False
         if not isinstance(update, (Update, UpdateCmn)):
             return False, False
         if not isinstance(update, UpdateCmn):
             update = UpdateCmn(update)
-        handler = self.get_cmd_handler(update)
+        if not update.is_cmd_response:
+            handler = self.get_cmd_handler(update)
+            self.prev_step_delete(update.index)
+        else:
+            handler = self.get_cmd_handler(update.update_previous)
         if handler:
             handler_exists = True
             self.lgz.debug('Handler exists.')
@@ -172,10 +205,10 @@ class TamTamBot(object):
                 self.lgz.debug('exit from %s.' % handler)
             else:
                 self.lgz.debug('Handler %s not callable.' % handler)
-            if res:
-                self.lgz.debug('Put index %s into previous step stack.' % update.index)
-                self.prev_step[update.index] = (handler, update)
-                self.lgz.debug('previous step stack:\n%s' % self.prev_step)
+            if res and not update.is_cmd_response:
+                self.prev_step_write(update.index, update.update_current)
+            elif res and update.is_cmd_response:
+                self.prev_step_delete(update.index)
         else:
             res = False
         return handler_exists, res
@@ -186,16 +219,20 @@ class TamTamBot(object):
         Для обработки команд необходимо создание в наследниках методов с именем "cmd_handler_%s", где %s - имя команды.
         Например, для команды "start" см. ниже метод self.cmd_handler_start
         """
+        cmd = None
+        link = None
+        chat_id = None
         try:
             update = UpdateCmn(update)
             if not update.chat_id:
                 return False
+            cmd = update.cmd
+            link = update.link
+            chat_id = update.chat_id
 
             # self.lgz.w('cmd="%s"; user_id=%s' % (cmd, user_id))
             self.lgz.debug('cmd="%s"; chat_id=%s; user_id=%s' % (update.cmd, update.chat_id, update.user_id))
-            if update.index in self.prev_step.keys():
-                self.lgz.debug('Deleting index %s from previous step stack.' % update.index)
-                self.prev_step.pop(update.index)
+
             self.lgz.debug('Trying call handler.')
             handler_exists, res = self.call_cmd_handler(update)
             if handler_exists:
@@ -208,11 +245,11 @@ class TamTamBot(object):
                 res = False
             else:
                 self.lgz.debug('Handler not exists.')
-                self.msg.send_message(NewMessageBody(_('"%s" is an incorrect command. Please specify.') % update.cmd, link=update.link), chat_id=update.chat_id)
+                self.msg.send_message(NewMessageBody(_('"%s" is an incorrect command. Please specify.') % cmd, link=link), chat_id=chat_id)
                 res = False
             return res
         except Exception:
-            self.msg.send_message(NewMessageBody(_('Your request (%s) cannot be completed at this time. Try again later.') % update.cmd, link=update.link), chat_id=update.chat_id)
+            self.msg.send_message(NewMessageBody(_('Your request (%s) cannot be completed at this time. Try again later.') % cmd, link=link), chat_id=chat_id)
             raise
 
     def cmd_handler_start(self, update):
@@ -263,25 +300,25 @@ class TamTamBot(object):
         return self.subscriptions.get_updates(types=Update.update_types)
 
     def polling(self):
-        self.lgz.info(_('Start. Press Ctrl-Break for stopping.'))
+        self.lgz.info('Start. Press Ctrl-Break for stopping.')
         while not self.stop_polling:
             # noinspection PyBroadException
             try:
                 self.before_polling_update_list()
-                self.lgz.debug(_('Update request'))
+                self.lgz.debug('Update request')
                 ul = self.update_list
-                self.lgz.debug(_('Update request completed'))
+                self.lgz.debug('Update request completed')
                 if ul.updates:
                     self.after_polling_update_list(True)
-                    self.lgz.info(_('There are %s updates') % len(ul.updates))
+                    self.lgz.info('There are %s updates' % len(ul.updates))
                     self.lgz.debug(ul)
                     for update in ul.updates:
                         self.lgz.debug(type(update))
                         self.handle_update(update)
                 else:
                     self.after_polling_update_list()
-                    self.lgz.debug(_('No updates...'))
-                self.lgz.debug(_('Pause for %s seconds') % self.polling_sleep_time)
+                    self.lgz.debug('No updates...')
+                self.lgz.debug('Pause for %s seconds' % self.polling_sleep_time)
                 sleep(self.polling_sleep_time)
 
             except ApiException as err:
@@ -290,7 +327,7 @@ class TamTamBot(object):
             except Exception:
                 self.lgz.exception('Exception')
                 # raise
-        self.lgz.info(_('Stopping'))
+        self.lgz.info('Stopping')
 
     def before_polling_update_list(self):
         pass
@@ -298,6 +335,18 @@ class TamTamBot(object):
     def after_polling_update_list(self, updated=False):
         # type: (bool) -> None
         pass
+
+    def deserialize_update(self, b_obj):
+        # type: (bytes) -> Update
+        data = json.loads(b_obj)
+        incoming_data = None
+        if data.get('update_type'):
+            incoming_data = self.client.deserialize(RESTResponse(urllib3.HTTPResponse(b_obj)), Update.discriminator_value_class_map.get(data.get('update_type')))
+        return incoming_data
+
+    def serialize_update(self, update):
+        # type: (Update) -> bytes
+        return json.dumps(self.client.sanitize_for_serialization(update))
 
     # Обработка тела запроса
     def handle_request_body(self, request_body):
@@ -307,10 +356,7 @@ class TamTamBot(object):
             try:
                 self.lgz.debug('request body:\n%s\n%s' % (request_body, request_body.decode('utf-8')))
                 request_body = self.before_handle_request_body(request_body)
-                data = json.loads(request_body)
-                incoming_data = None
-                if data.get('update_type'):
-                    incoming_data = self.client.deserialize(RESTResponse(urllib3.HTTPResponse(request_body)), Update.discriminator_value_class_map.get(data.get('update_type')))
+                incoming_data = self.deserialize_update(request_body)
                 if incoming_data:
                     incoming_data = self.after_handle_request_body(incoming_data)
                     self.lgz.debug('incoming data:\n type=%s;\n data=%s' % (type(incoming_data), incoming_data))
@@ -397,18 +443,14 @@ class TamTamBot(object):
         # type: (MessageCreatedUpdate) -> bool
         update = UpdateCmn(update)
         # Проверка на ответ команде
-        self.lgz.debug('previous step stack:\n%s' % self.prev_step)
-        if update.index in self.prev_step.keys():
+        update_previous = self.prev_step_get(update.index)
+        if isinstance(update_previous, Update):
             self.lgz.debug('Command answer detected (%s).' % update.index)
-            (handler, update_previous) = self.prev_step[update.index]
-            if handler and isinstance(update_previous, UpdateCmn):
-                # Если это ответ на вопрос команды, то установить соответствующий признак и снова вызвать команду
-                update.is_cmd_response = True
-                update.update_previous = update_previous.update_current
-                res = handler(update)
-                if res:
-                    self.prev_step.pop(update.index)
-                return res
+            # Если это ответ на вопрос команды, то установить соответствующий признак и снова вызвать команду
+            update.is_cmd_response = True
+            update.update_previous = update_previous
+            handler_exists, res = self.call_cmd_handler(update)
+            return res
         self.lgz.debug('Trivial message. Not commands answer (%s).' % update.index)
 
     def handle_message_callback_update(self, update):
@@ -487,7 +529,7 @@ class TamTamBot(object):
             if isinstance(chat_list, ChatList):
                 marker = chat_list.marker
                 for chat in chat_list.chats:
-                    self.lgz.debug(_('Found chat => chat_id=%(id)s; type: %(type)s; status: %(status)s; title: %(title)s; participants: %(participants)s; owner: %(owner)s') %
+                    self.lgz.debug('Found chat => chat_id=%(id)s; type: %(type)s; status: %(status)s; title: %(title)s; participants: %(participants)s; owner: %(owner)s' %
                                    {'id': chat.chat_id, 'type': chat.type, 'status': chat.status, 'title': chat.title, 'participants': chat.participants_count, 'owner': chat.owner_id})
                     if chat.status in [ChatStatus.ACTIVE]:
                         members = None
@@ -495,7 +537,7 @@ class TamTamBot(object):
                             if chat.type != ChatType.DIALOG:
                                 members = self.get_chat_members(chat.chat_id)
                         except ApiException as err:
-                            if str(err.body).lower().find('User is not admin') < 0:
+                            if str(err.body).lower().find('user is not admin') < 0:
                                 raise
                         if members or chat.type == ChatType.DIALOG:
                             chat_ext = ChatExt(chat, self.title)
@@ -504,13 +546,14 @@ class TamTamBot(object):
                                 if current_user and current_user.is_admin:
                                     bot_user = members.get(self.user_id)
                                     if bot_user:
-                                        chat_ext.admin_permissions[user_id] = bot_user.permissions
+                                        chat_ext.admin_permissions[self.user_id] = bot_user.permissions
                                     else:
                                         self.lgz.debug('bot with id=%s not found into chat %s members list' % (self.user_id, chat.chat_id))
                             elif chat.type == ChatType.DIALOG and chat_ext.chat.chat_id == chat_id:
                                 chat_ext.admin_permissions[self.user_id] = ['write', 'read_all_messages']
                             if chat_ext.admin_permissions:
                                 chats_available[chat.chat_id] = chat_ext
+                                self.lgz.debug('chat => chat_id=%(id)s added into list available chats' % {'id': chat.chat_id})
                 if not marker:
                     break
         return chats_available
@@ -552,3 +595,65 @@ class TamTamBot(object):
             res = [[_] for _ in res]
 
         return res
+
+    def prev_step_write(self, index, update):
+        # type: (str, Update) -> None
+        if not self.prev_step_exists(index):
+            self.lgz.debug('Put index %s into previous step stack.' % index)
+            b_obj = self.serialize_update(update)
+            cursor = self.conn_srv.cursor()
+            # noinspection SqlResolve
+            cursor.execute(
+                'INSERT INTO %(table)s ([index], [update]) VALUES (:index, :update)' %
+                {'table': self.prev_step_table_name}, {'index': index, 'update': b_obj})
+            cursor.connection.commit()
+            cursor.close()
+        self.lgz.debug('previous step stack:\n%s' % self.prev_step_all())
+
+    def prev_step_exists(self, index):
+        # type: (str) -> bool
+        update = self.prev_step_get(index)
+        if update:
+            return True
+        else:
+            return False
+
+    def prev_step_delete(self, index):
+        # type: (str) -> None
+        if self.prev_step_exists(index):
+            self.lgz.debug('Deleting index %s from previous step stack.' % index)
+            cursor = self.conn_srv.cursor()
+            # noinspection SqlResolve
+            cursor.execute(
+                'DELETE FROM %(table)s WHERE [index]=:index' %
+                {'table': self.prev_step_table_name}, {'index': index})
+            cursor.connection.commit()
+            cursor.close()
+            self.lgz.debug('previous step stack:\n%s' % self.prev_step_all())
+
+    def prev_step_all(self):
+        # type: () -> {}
+        res = {}
+        cursor = self.conn_srv.cursor()
+        # noinspection SqlResolve
+        cursor.execute(
+            'SELECT [index], [update] FROM %(table)s' %
+            {'table': self.prev_step_table_name})
+        sql_res = cursor.fetchall()
+        cursor.close()
+        if sql_res is not None:
+            for row in sql_res:
+                res[row[0]] = self.deserialize_update(row[1])
+        return res
+
+    def prev_step_get(self, index):
+        # type: (str) -> Update
+        cursor = self.conn_srv.cursor()
+        # noinspection SqlResolve
+        cursor.execute(
+            'SELECT [index], [update] FROM %(table)s WHERE [index]=:index' %
+            {'table': self.prev_step_table_name}, {'index': index})
+        row = cursor.fetchone()
+        cursor.close()
+        if row:
+            return self.deserialize_update(row[1])
