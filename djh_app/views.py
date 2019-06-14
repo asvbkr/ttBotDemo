@@ -9,6 +9,7 @@ from ttBotDemo.BotDemo import BotDemo
 from .models import Greeting
 
 tt_bot = BotDemo()
+tt_bot.polling_sleep_time = 0
 
 if isinstance(tt_bot.info, UserWithPhoto):
     title = 'ТТ-бот: @%s (%s)' % (tt_bot.info.username, tt_bot.info.name)
@@ -48,3 +49,22 @@ def db(request):
     greetings = Greeting.objects.all()
 
     return render(request, "db.html", {"greetings": greetings, 'title': title})
+
+
+@csrf_exempt
+def start_polling(request):
+    # type:(WSGIRequest) -> HttpResponse
+    tt_bot.stop_polling = False
+    tt_bot.polling()
+
+    data = {'title': title, 'info': 'Завершён запрос изменений с сервера.'}
+    return render(request, "index.html", context=data)
+
+
+@csrf_exempt
+def stop_polling(request):
+    # type:(WSGIRequest) -> HttpResponse
+    tt_bot.stop_polling = True
+
+    data = {'title': title, 'info': 'Принята команда на остановку. Дождитесь, пока будет завершён запрос изменений с сервера.'}
+    return render(request, "index.html", context=data)
