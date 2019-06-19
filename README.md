@@ -1,6 +1,6 @@
 # ttBotDemo. Python 2 and 3 compatibility
 Демонстрационный бот для ТамТам на основе https://github.com/asvbkr/TamTamBot
-Рабочий инстанс - https://tt.me/asvbkrTestBot1
+Рабочий инстанс - https://tt.me/asvbkrTestBot1 (@asvbkrTestBot1)
 ***
 ## Инструкция:
 <ol>
@@ -13,7 +13,14 @@
 <li> Установить переменную среды LOGGING_LEVEL - уровень логирования. Возможные значения - текстовые названия уровней из пакета logging. Например, DEBUG или WARNING
 </ul>
 <li> Запустить на выполнение python manage.py runserver 0.0.0.0:5000. Для работы в режиме webhooks всё готово
-<li> Для работы в режиме longpolls - в браузере открыть адрес запущенного приложения с окончанием /start_polling
-<li> Для остановки работы в режиме longpolls - в браузере открыть адрес запущенного приложения с окончанием /stop_polling
+<li> Для работы в режиме longpolls:
+<ul>
+<li> Под Django:
+<ul>
+<li> Старт - в браузере открыть адрес запущенного приложения с окончанием /start_polling
+<li> Стоп - в браузере открыть адрес запущенного приложения с окончанием /stop_polling
+</ul>
+<li> Без Django: запустить на выполнение - python BotDemo.py. Остановка - Ctrl-Break
+</ul>
 <li> Бот с минимальной функциональностью готов.
 </ol>

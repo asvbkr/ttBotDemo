@@ -3,6 +3,7 @@ import logging
 import os
 
 from TamTamBot.TamTamBot import TamTamBot
+from TamTamBot.utils.lng import set_use_django
 
 
 class BotDemo(TamTamBot):
@@ -15,5 +16,6 @@ class BotDemo(TamTamBot):
 
 
 if __name__ == '__main__':
+    set_use_django(False)
     bot = BotDemo()
     bot.polling()
