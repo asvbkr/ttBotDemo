@@ -1,15 +1,22 @@
 # -*- coding: UTF-8 -*-
+from threading import Thread
+
 from django.core.handlers.wsgi import WSGIRequest
 from django.shortcuts import render
 from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 
+from TamTamBot.utils.utils import get_environ_bool
 from openapi_client import UserWithPhoto
 from ttBotDemo.BotDemo import BotDemo
 from .models import Greeting
 
 tt_bot = BotDemo()
 tt_bot.polling_sleep_time = 0
+if get_environ_bool('TT_BOT_POLLING_MODE', False):
+    t = Thread(target=tt_bot.polling, args=())
+    t.setDaemon(True)
+    t.start()
 
 if isinstance(tt_bot.info, UserWithPhoto):
     title = 'ТТ-бот: @%s (%s)' % (tt_bot.info.username, tt_bot.info.name)
