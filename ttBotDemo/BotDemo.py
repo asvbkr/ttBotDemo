@@ -1,9 +1,8 @@
 # -*- coding: UTF-8 -*-
-import logging
 import os
 
 from TamTamBot.TamTamBot import TamTamBot
-from TamTamBot.utils.lng import set_use_django
+from ttgb_cmn.lng import set_use_django
 
 
 class BotDemo(TamTamBot):

@@ -6,14 +6,14 @@ from django.shortcuts import render
 from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 
-from TamTamBot.utils.utils import get_environ_bool
+from ttgb_cmn.cmn import Utils
 from openapi_client import UserWithPhoto
 from ttBotDemo.BotDemo import BotDemo
 from .models import Greeting
 
 tt_bot = BotDemo()
 tt_bot.polling_sleep_time = 0
-if get_environ_bool('TT_BOT_POLLING_MODE', False):
+if Utils.get_environ_bool('TT_BOT_POLLING_MODE', False):
     t = Thread(target=tt_bot.polling, args=())
     t.setDaemon(True)
     t.start()

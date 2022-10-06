@@ -122,6 +122,8 @@ STATIC_URL = "/static/"
 
 django_heroku.settings(locals())
 
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
 LOCALE_PATHS = [
     os.path.join(BASE_DIR, 'locale'),
     os.path.join(BASE_DIR, 'TamTamBot', 'locale'),  # translation lookup directory for "TamTamBot"
