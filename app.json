@@ -23,6 +23,5 @@
         "test": "python manage.py test"
       }
     }
-  },
-  "stack": "heroku-22"
+  }
 }
