@@ -1,9 +1,9 @@
-[submodule "TamTamBot"]
-	path = TamTamBot
-	url = https://github.com/asvbkr/TamTamBot.git
 [submodule "openapi_client"]
 	path = openapi_client
 	url = https://github.com/asvbkr/openapi_client.git
+[submodule "TamTamBot"]
+	path = TamTamBot
+	url = https://github.com/asvbkr/TamTamBot.git
 [submodule "ttgb_cmn"]
 	path = ttgb_cmn
 	url = https://github.com/asvbkr/ttgb_cmn.git
