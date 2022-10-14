@@ -5,7 +5,7 @@ from TamTamBot.TamTamBot import TamTamBot
 from ttgb_cmn.lng import set_use_django
 
 
-class BotDemo(TamTamBot):
+class TtbDemo(TamTamBot):
 
     @property
     def description(self):
@@ -22,5 +22,5 @@ class BotDemo(TamTamBot):
 
 if __name__ == '__main__':
     set_use_django(False)
-    bot = BotDemo()
+    bot = TtbDemo()
     bot.polling()
